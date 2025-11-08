@@ -11,7 +11,7 @@ using ConsoleApp.Models;
 using TaskStatus = ConsoleApp.Models.TaskStatus;
 
 namespace ConsoleApp
-{ 
+{
     /**
      * Console UI for the Personal Task & Schedule Management System.
      *
@@ -34,6 +34,9 @@ namespace ConsoleApp
 
             while (true)
             {
+                // Alert user if any tasks due within next 24 hours.
+                CheckDueSoonAlerts();
+
                 ShowMainMenu();
                 Console.Write("Select option: ");
                 var choice = Console.ReadLine()?.Trim();
@@ -47,6 +50,7 @@ namespace ConsoleApp
                     case "5": ViewTasksMenu(); break;
                     case "6": SearchTasks(); break;
                     case "7": ViewTasksDueRange(); break;
+                    case "8": ShowDayWeekView(); break;
                     case "0": return;
                     default:
                         Console.WriteLine("Invalid choice. Try again.");
@@ -71,12 +75,13 @@ namespace ConsoleApp
             Console.WriteLine("5) View / Filter / Sort tasks");
             Console.WriteLine("6) Search tasks by keyword");
             Console.WriteLine("7) View tasks due within date range");
+            Console.WriteLine("8) Day / Week view (grouped by date)");
             Console.WriteLine("0) Exit");
         }
 
         /**
-         * Interactive flow to add a new task. 
-         * 
+         * Interactive flow to add a new task.
+         *
          * Prompts for required and optional fields, constructs a TaskDetails instance and appends it to the in-memory list.
          */
         private static void AddTask()
@@ -98,8 +103,8 @@ namespace ConsoleApp
         }
 
         /**
-         * Interactive flow to edit an existing task. 
-         * 
+         * Interactive flow to edit an existing task.
+         *
          * User selects a task index then may update title, description, category, due date, priority and status.
          * For fields that are privately set on TaskDetails (Category, DueDate) a new TaskDetails is constructed
          * and replaces the existing item ensuring validation rules are applied.
@@ -239,7 +244,7 @@ namespace ConsoleApp
 
         /**
          * View menu to allow listing, filtering and sorting tasks.
-         * 
+         *
          * Presents filter options and applies the selected query before displaying results.
          */
         private static void ViewTasksMenu()
@@ -274,7 +279,7 @@ namespace ConsoleApp
                     break;
                 case "4":
                     var start = PromptRequiredDate("Start date (yyyy-MM-dd): ");
-                    var end = PromptRequiredDate("End date (yyyy-MM-dd): ");
+                    var end   = PromptRequiredDate("End date (yyyy-MM-dd): ");
                     query = query.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date >= start.Date && t.DueDate.Value.Date <= end.Date);
                     break;
                 case "5":
@@ -317,7 +322,7 @@ namespace ConsoleApp
 
         /**
          * Prompts for a keyword and searches title and description for matches.
-         * 
+         *
          * Displays matching tasks.
          */
         private static void SearchTasks()
@@ -400,6 +405,125 @@ namespace ConsoleApp
         }
 
         /**
+         * Shows tasks grouped by date for either a single day or a seven-day week.
+         * Users choose Day or Week and an optional date (defaults to today).
+         */
+        private static void ShowDayWeekView()
+        {
+            if (!EnsureTasksExist()) return;
+
+            PrintSubMenuHeader("Day / Week View");
+
+            Console.WriteLine("1) Day view");
+            Console.WriteLine("2) Week view (7 days)");
+            Console.WriteLine();
+            Console.Write("Choice: ");
+            var choice = Console.ReadLine()?.Trim();
+
+            if (choice == "1")
+            {
+                var date = PromptOptionalDate("Date for day view (yyyy-MM-dd) [Defaults to Today]: ") ?? DateTime.Today;
+                DisplayGroupedByDate(date, date);
+            }
+            else if (choice == "2")
+            {
+                var start = PromptOptionalDate("Start date for week view (yyyy-MM-dd) [Defaults to Today]: ") ?? DateTime.Today;
+                var end = start.AddDays(6);
+                DisplayGroupedByDate(start, end);
+            }
+            else
+            {
+                Console.WriteLine("Invalid choice.");
+            }
+        }
+
+        /**
+         * Displays tasks grouped by date in the inclusive range [start, end].
+         * Tasks without due date are shown under "No due date".
+         */
+        private static void DisplayGroupedByDate(DateTime start, DateTime end)
+        {
+            PrintSubMenuHeader($"Tasks {start:yyyy-MM-dd} to {end:yyyy-MM-dd}");
+
+            // Build groups for each date in the range.
+            var range = Enumerable.Range(0, (end.Date - start.Date).Days + 1)
+                                  .Select(offset => start.Date.AddDays(offset))
+                                  .ToList();
+
+            foreach (var day in range)
+            {
+                Console.WriteLine();
+                Console.WriteLine(day.ToString("yyyy-MM-dd (dddd)"));
+                var forDay = Tasks.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date == day.Date)
+                                  .OrderByDescending(t => t.Priority)
+                                  .ThenBy(t => t.Title)
+                                  .ToList();
+                if (forDay.Count == 0)
+                {
+                    Console.WriteLine("  (no tasks)");
+                }
+                else
+                {
+                    foreach (var t in forDay)
+                    {
+                        Console.WriteLine("  " + FormatTaskDisplay(t, Tasks.IndexOf(t)));
+                    }
+                }
+            }
+
+            // Tasks with no due date.
+            var noDue = Tasks.Where(t => !t.DueDate.HasValue).ToList();
+            Console.WriteLine();
+            Console.WriteLine("------------");
+            Console.WriteLine("No due date:");
+            if (noDue.Count == 0)
+            {
+                Console.WriteLine("  (none)");
+            }
+            else
+            {
+                foreach (var t in noDue)
+                {
+                    Console.WriteLine("  " + FormatTaskDisplay(t, Tasks.IndexOf(t)));
+                }
+            }
+
+            Console.WriteLine();
+        }
+
+        /**
+         * Check for tasks due within the next 24 hours (and not completed) and print an alert.
+         * Called at the start of each main loop so user is notified frequently.
+         */
+        private static void CheckDueSoonAlerts()
+        {
+            if (Tasks.Count == 0) return;
+
+            var now = DateTime.Now;
+            var cutoff = now.AddHours(24);
+
+            var dueSoon = Tasks.Where(t =>
+                t.DueDate.HasValue
+                && t.Status != TaskStatus.Completed
+                && t.DueDate.Value <= cutoff
+            ).OrderBy(t => t.DueDate).ToList();
+
+            if (dueSoon.Count == 0) return;
+
+            Console.WriteLine();
+            Console.WriteLine("!!! ALERT: Tasks due within next 24 hours or overdue !!!");
+            Console.WriteLine("----------");
+            foreach (var t in dueSoon)
+            {
+                var due     = t.DueDate.HasValue ? t.DueDate.Value.ToString("yyyy-MM-dd HH:mm") : "none";
+                var overdue = t.DueDate.HasValue && t.DueDate.Value < now ? " (OVERDUE)" : string.Empty;
+                Console.WriteLine($" - {t.Title} | Due: {due}{overdue} | Priority: {t.Priority} | Status: {t.Status} | Desc: {t.Description}");
+            }
+           
+            Console.WriteLine();
+        }
+
+        /**
          * Formats a single task for console display.
          *
          * Parameters:
@@ -411,9 +535,12 @@ namespace ConsoleApp
          */
         private static string FormatTaskDisplay(TaskDetails task, int index)
         {
-            var due = task.DueDate.HasValue ? task.DueDate.Value.ToString("yyyy-MM-dd") : "none";
-            var desc = string.IsNullOrWhiteSpace(task.Description) ? "<none>" : task.Description;
-            return $"[{index}] {task.Title} | Category: {task.Category} | Priority: {task.Priority} | Status: {task.Status} | Due: {due} | Desc: {desc}";
+            var due       = task.DueDate.HasValue ? task.DueDate.Value.ToString("yyyy-MM-dd") : "none";
+            var desc      = string.IsNullOrWhiteSpace(task.Description) ? "<none>" : task.Description;
+            var created   = task.CreatedAt.ToString("yyyy-MM-dd");
+            var completed = task.CompletedAt.HasValue ? $" | Completed: {task.CompletedAt.Value:yyyy-MM-dd}" : string.Empty;
+
+            return $"[{index}] {task.Title} | Category: {task.Category} | Priority: {task.Priority} | Status: {task.Status} | Due: {due} | Created: {created}{completed} | Desc: {desc}";
         }
 
         /**
@@ -436,9 +563,9 @@ namespace ConsoleApp
 
         /**
          * Prints a formatted sub-menu header to the console.
-         * 
+         *
          * @param title The text to display as the sub-menu header.
-         * 
+         *
          * @returns void
          */
         private static void PrintSubMenuHeader(string title)
