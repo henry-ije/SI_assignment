@@ -52,32 +52,60 @@ namespace ConsoleApp.Models
         public DateTime? DueDate { get; set; }
 
         /**
-         * Category name (free-form).
+         * Category name (required).
          */
-        public string? Category { get; set; }
+        public string Category { get; private set; }
 
         /**
-         * Priority level.
+         * Priority level (required).
          */
         public PriorityLevel Priority { get; private set; }
 
         /**
-         * Current status.
+         * Current status (required).
          */
         public TaskStatus Status { get; private set; }
 
         /**
          * Creates a new TaskDetails instance.
+         * 
+         * Parameters:
+         *   title       - The title of the task. Cannot be null or empty.
+         *   category    - The category of the task (e.g., Work, Personal).
+         *   priority    - The priority level of the task (Low, Medium, High).
+         *   status      - The current status of the task (NotStarted, InProgress, Completed).
+         *   description - Optional. A detailed description of the task.
+         *   dueDate     - Optional. The due date of the task.
          */
         public TaskDetails(
             string title,
+            string category,
+            PriorityLevel priority,
+            TaskStatus status,
             string? description = null,
-            DateTime? dueDate = null,
-            string? category = null,
-            PriorityLevel priority = PriorityLevel.Medium,
-            TaskStatus status = TaskStatus.NotStarted)
+            DateTime? dueDate = null
+        )
         {
-            Title       = title;
+            // Title setter validates for null/whitespace.
+            Title = title;
+
+            // Validate required category.
+            if (string.IsNullOrWhiteSpace(category))
+            {
+                throw new ArgumentException("Category cannot be null or empty.", nameof(category));
+            }
+
+            // Validate enums are defined values.
+            if (!Enum.IsDefined(typeof(PriorityLevel), priority))
+            {
+                throw new ArgumentOutOfRangeException(nameof(priority), "Priority must be a defined PriorityLevel value.");
+            }
+
+            if (!Enum.IsDefined(typeof(TaskStatus), status))
+            {
+                throw new ArgumentOutOfRangeException(nameof(status), "Status must be a defined TaskStatus value.");
+            }
+
             Description = description;
             DueDate     = dueDate;
             Category    = category;
@@ -88,7 +116,13 @@ namespace ConsoleApp.Models
         /**
          * Update the task's status.
          */
-        public void UpdateStatus(TaskStatus status) => Status = status;
+        public void UpdateStatus(TaskStatus status)
+        {
+            if (!Enum.IsDefined(typeof(TaskStatus), status))
+                throw new ArgumentOutOfRangeException(nameof(status), "Status must be a defined TaskStatus value.");
+
+            Status = status;
+        }
 
         /**
          * Mark the task as completed.
@@ -98,7 +132,13 @@ namespace ConsoleApp.Models
         /**
          * Update the task's priority.
          */
-        public void UpdatePriority(PriorityLevel priority) => Priority = priority;
+        public void UpdatePriority(PriorityLevel priority)
+        {
+            if (!Enum.IsDefined(typeof(PriorityLevel), priority))
+                throw new ArgumentOutOfRangeException(nameof(priority), "Priority must be a defined PriorityLevel value.");
+
+            Priority = priority;
+        }
 
         public override string ToString()
         {
