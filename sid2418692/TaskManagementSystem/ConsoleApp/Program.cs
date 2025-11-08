@@ -631,7 +631,42 @@ namespace ConsoleApp
                 return;
             }
 
-            var path = PromptRequiredString("Enter file path to save tasks (e.g. tasks.csv): ").Trim();
+            var input = PromptRequiredString("Enter file path to save tasks (e.g. tasks.csv): ").Trim();
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                Console.WriteLine("Invalid path.");
+                return;
+            }
+
+            // If user provided a directory path by mistake, detect and reject.
+            if (Directory.Exists(input))
+            {
+                Console.WriteLine("Specified path is a directory. Please provide a file name (for example: tasks.csv).");
+                return;
+            }
+
+            var ext = Path.GetExtension(input);
+            if (string.IsNullOrEmpty(ext))
+            {
+                // No extension -> append .csv
+                input += ".csv";
+                Console.WriteLine($"No extension provided. Using '{input}'.");
+            }
+            else if (!string.Equals(ext, ".csv", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Provided file has extension '{ext}'.");
+                if (AskYesNo("Replace extension with '.csv'? (Y/n): "))
+                {
+                    input = Path.ChangeExtension(input, ".csv");
+                    Console.WriteLine($"Saving as '{input}'.");
+                }
+                else
+                {
+                    Console.WriteLine("Keeping supplied extension.");
+                }
+            }
+
+            var path = input;
 
             if (File.Exists(path))
             {
@@ -687,22 +722,35 @@ namespace ConsoleApp
                 }
 
                 Console.WriteLine($"Read {loaded.Count} tasks from file. {skipped} invalid line(s) were skipped.");
-                Console.WriteLine("1) Replace current tasks");
-                Console.WriteLine("2) Append to current tasks");
+                Console.WriteLine("1) Replace and backup current tasks");
+                Console.WriteLine("2) Replace current tasks");
+                Console.WriteLine("3) Append to current tasks");
                 Console.WriteLine();
                 Console.Write("Choice: ");
                 var choice = Console.ReadLine()?.Trim();
 
-                if (choice == "1")
+                switch (choice)
                 {
-                    Tasks.Clear();
-                    Tasks.AddRange(loaded);
-                    Console.WriteLine("Current tasks replaced with file contents.");
-                }
-                else
-                {
-                    Tasks.AddRange(loaded);
-                    Console.WriteLine("Loaded tasks appended to current list.");
+                    case "1":
+                        if (!CreateBackup(path))
+                        {
+                            if (!AskYesNo("Continue with replace without backup? (y/N): "))
+                            {
+                                Console.WriteLine("Load cancelled.");
+                                return;
+                            }
+                        }
+                        ReplaceTasks(loaded, "Current tasks replaced with file contents (backup created).");
+                        break;
+
+                    case "2":
+                        ReplaceTasks(loaded, "Current tasks replaced with file contents.");
+                        break;
+
+                    default:
+                        Tasks.AddRange(loaded);
+                        Console.WriteLine("Loaded tasks appended to current list.");
+                        break;
                 }
             }
             catch (FormatException fex)
@@ -879,6 +927,42 @@ namespace ConsoleApp
             }
 
             return result;
+        }
+
+        /**
+         * Creates a timestamped backup of the current tasks in the same directory as the target file.
+         * 
+         * @param path The base file path used to derive the backup file name.
+         * @return true if backup was created successfully, false otherwise.
+         */
+        private static bool CreateBackup(string path)
+        {
+            try
+            {
+                var backupPath = Path.ChangeExtension(path, null) + $".backup.{DateTime.Now:yyyyMMddHHmmss}" + Path.GetExtension(path);
+                SaveTasksToCsv(backupPath);
+                Console.WriteLine($"Backup of current tasks created at '{backupPath}'.");
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Console.WriteLine($"Failed to create backup: {ex.Message}");
+                return false;
+            }
+        }
+
+        /**
+         * Replaces the current in-memory task list with the given tasks and displays a confirmation message.
+         * 
+         * @param newTasks The new list of tasks to set.
+         * @param message A confirmation message to display after replacement.
+         * @return void
+         */
+        private static void ReplaceTasks(List<TaskDetails> newTasks, string message)
+        {
+            Tasks.Clear();
+            Tasks.AddRange(newTasks);
+            Console.WriteLine(message);
         }
 
         /**
