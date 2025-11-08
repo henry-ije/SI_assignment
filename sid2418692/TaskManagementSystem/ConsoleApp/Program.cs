@@ -1,6 +1,7 @@
 ﻿/**
  * Author: Henry Ije
  * Project: Personal Task & Schedule Management System
+ * Purpose: Console user interface to create, edit, view and manage `TaskDetails` instances.
  */
 
 using System;
@@ -17,16 +18,23 @@ namespace ConsoleApp
      *
      * Provides a simple interactive menu to add, edit, delete, view, search,
      * sort and filter tasks kept in an in-memory list.
+     *
+     * @return void (application entry).
      */
     internal static class Program
     {
         /**
          * In-memory storage for tasks. Index displayed to the user corresponds to list index.
+         *
+         * @return List of TaskDetails stored in memory.
          */
         private static readonly List<TaskDetails> Tasks = new();
 
         /**
          * Entry point. Runs the main interactive loop until the user exits.
+         *
+         * @param args Command line arguments.
+         * @return void.
          */
         private static void Main(string[] args)
         {
@@ -63,6 +71,8 @@ namespace ConsoleApp
 
         /**
          * Prints the main menu options to the console.
+         *
+         * @return void
          */
         private static void ShowMainMenu()
         {
@@ -83,6 +93,8 @@ namespace ConsoleApp
          * Interactive flow to add a new task.
          *
          * Prompts for required and optional fields, constructs a TaskDetails instance and appends it to the in-memory list.
+         *
+         * @return void
          */
         private static void AddTask()
         {
@@ -108,6 +120,8 @@ namespace ConsoleApp
          * User selects a task index then may update title, description, category, due date, priority and status.
          * For fields that are privately set on TaskDetails (Category, DueDate) a new TaskDetails is constructed
          * and replaces the existing item ensuring validation rules are applied.
+         *
+         * @return void
          */
         private static void EditTask()
         {
@@ -155,13 +169,14 @@ namespace ConsoleApp
         /**
          * Rebuilds a TaskDetails with a new category and replaces the item at the provided index.
          *
-         * Parameters:
-         *   original    - The original task to replace.
-         *   newCategory - New category value (validated by TaskDetails ctor).
-         *   index       - Index in the Tasks list to replace.
+         * @param original    The original task to replace.
+         * @param newCategory New category value.
+         * @param index       Index in the Tasks list to replace.
          *
-         * Returns:
-         *   The new TaskDetails instance now stored in the list.
+         * @return The new TaskDetails instance now stored in the list.
+         *
+         * @throws ArgumentException if the new category is null/empty (propagated from TaskDetails ctor).
+         * @throws ArgumentOutOfRangeException if TaskDetails ctor validation fails for enums.
          */
         private static TaskDetails ReplaceCategory(TaskDetails original, string newCategory, int index)
         {
@@ -179,13 +194,14 @@ namespace ConsoleApp
         /**
          * Rebuilds a TaskDetails with a new due date (nullable) and replaces the item at the provided index.
          *
-         * Parameters:
-         *   original - The original task to replace.
-         *   newDue   - New due date (nullable).
-         *   index    - Index in the Tasks list to replace.
+         * @param original The original task to replace.
+         * @param newDue   New due date (nullable).
+         * @param index    Index in the Tasks list to replace.
          *
-         * Returns:
-         *   The new TaskDetails instance now stored in the list.
+         * @return The new TaskDetails instance now stored in the list.
+         *
+         * @throws ArgumentException if TaskDetails ctor validation fails for title/category.
+         * @throws ArgumentOutOfRangeException if TaskDetails ctor validation fails for enums.
          */
         private static TaskDetails ReplaceDueDate(TaskDetails original, DateTime? newDue, int index)
         {
@@ -202,6 +218,8 @@ namespace ConsoleApp
 
         /**
          * Deletes a task selected by index after asking the user for confirmation.
+         *
+         * @return void
          */
         private static void DeleteTask()
         {
@@ -227,6 +245,8 @@ namespace ConsoleApp
 
         /**
          * Marks the selected task as completed.
+         *
+         * @return void
          */
         private static void MarkTaskCompleted()
         {
@@ -246,6 +266,8 @@ namespace ConsoleApp
          * View menu to allow listing, filtering and sorting tasks.
          *
          * Presents filter options and applies the selected query before displaying results.
+         *
+         * @return void
          */
         private static void ViewTasksMenu()
         {
@@ -279,7 +301,7 @@ namespace ConsoleApp
                     break;
                 case "4":
                     var start = PromptRequiredDate("Start date (yyyy-MM-dd): ");
-                    var end   = PromptRequiredDate("End date (yyyy-MM-dd): ");
+                    var end = PromptRequiredDate("End date (yyyy-MM-dd): ");
                     query = query.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date >= start.Date && t.DueDate.Value.Date <= end.Date);
                     break;
                 case "5":
@@ -295,11 +317,8 @@ namespace ConsoleApp
         /**
          * Presents sorting options and returns the ordered enumerable.
          *
-         * Parameters:
-         *   source - The source task collection to sort.
-         *
-         * Returns:
-         *   IEnumerable<TaskDetails> sorted according to user choice.
+         * @param source The source task collection to sort.
+         * @return IEnumerable<TaskDetails> sorted according to user choice.
          */
         private static IEnumerable<TaskDetails> SortMenu(IEnumerable<TaskDetails> source)
         {
@@ -324,6 +343,8 @@ namespace ConsoleApp
          * Prompts for a keyword and searches title and description for matches.
          *
          * Displays matching tasks.
+         *
+         * @return void
          */
         private static void SearchTasks()
         {
@@ -345,6 +366,8 @@ namespace ConsoleApp
 
         /**
          * Displays tasks due within a user-selected range (next 7 days, 30 days, or custom).
+         *
+         * @return void
          */
         private static void ViewTasksDueRange()
         {
@@ -365,17 +388,17 @@ namespace ConsoleApp
             if (choice == "1")
             {
                 start = DateTime.Today;
-                end   = DateTime.Today.AddDays(7);
+                end = DateTime.Today.AddDays(7);
             }
             else if (choice == "2")
             {
                 start = DateTime.Today;
-                end   = DateTime.Today.AddDays(30);
+                end = DateTime.Today.AddDays(30);
             }
             else
             {
                 start = PromptRequiredDate("Start date (yyyy-MM-dd): ");
-                end   = PromptRequiredDate("End date (yyyy-MM-dd): ");
+                end = PromptRequiredDate("End date (yyyy-MM-dd): ");
             }
 
             var results = Tasks.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date >= start.Date && t.DueDate.Value.Date <= end.Date).ToList();
@@ -385,8 +408,8 @@ namespace ConsoleApp
         /**
          * Displays a list of tasks to the console. If empty prints a message.
          *
-         * Parameters:
-         *   list - List of tasks to display.
+         * @param list The list of tasks to display.
+         * @return void
          */
         private static void DisplayTaskList(IList<TaskDetails> list)
         {
@@ -407,6 +430,8 @@ namespace ConsoleApp
         /**
          * Shows tasks grouped by date for either a single day or a seven-day week.
          * Users choose Day or Week and an optional date (defaults to today).
+         *
+         * @return void
          */
         private static void ShowDayWeekView()
         {
@@ -440,6 +465,10 @@ namespace ConsoleApp
         /**
          * Displays tasks grouped by date in the inclusive range [start, end].
          * Tasks without due date are shown under "No due date".
+         *
+         * @param start Start date of range (inclusive).
+         * @param end   End date of range (inclusive).
+         * @return void
          */
         private static void DisplayGroupedByDate(DateTime start, DateTime end)
         {
@@ -494,6 +523,8 @@ namespace ConsoleApp
         /**
          * Check for tasks due within the next 24 hours (and not completed) and print an alert.
          * Called at the start of each main loop so user is notified frequently.
+         *
+         * @return void
          */
         private static void CheckDueSoonAlerts()
         {
@@ -515,29 +546,26 @@ namespace ConsoleApp
             Console.WriteLine("----------");
             foreach (var t in dueSoon)
             {
-                var due     = t.DueDate.HasValue ? t.DueDate.Value.ToString("yyyy-MM-dd HH:mm") : "none";
+                var due = t.DueDate.HasValue ? t.DueDate.Value.ToString("yyyy-MM-dd HH:mm") : "none";
                 var overdue = t.DueDate.HasValue && t.DueDate.Value < now ? " (OVERDUE)" : string.Empty;
-                Console.WriteLine($" - {t.Title} | Due: {due}{overdue} | Priority: {t.Priority} | Status: {t.Status} | Desc: {t.Description}");
+                Console.WriteLine($" - {t.Title} | Due: {due}{overdue} | Priority: {t.Priority} | Status: {t.Status}");
             }
-           
+
             Console.WriteLine();
         }
 
         /**
          * Formats a single task for console display.
          *
-         * Parameters:
-         *   task  - The task to format.
-         *   index - The displayed index of the task in the list.
-         *
-         * Returns:
-         *   A human-readable single-line representation of the task.
+         * @param task  The task to format.
+         * @param index The displayed index of the task in the list.
+         * @return A human-readable single-line representation of the task.
          */
         private static string FormatTaskDisplay(TaskDetails task, int index)
         {
-            var due       = task.DueDate.HasValue ? task.DueDate.Value.ToString("yyyy-MM-dd") : "none";
-            var desc      = string.IsNullOrWhiteSpace(task.Description) ? "<none>" : task.Description;
-            var created   = task.CreatedAt.ToString("yyyy-MM-dd");
+            var due = task.DueDate.HasValue ? task.DueDate.Value.ToString("yyyy-MM-dd") : "none";
+            var desc = string.IsNullOrWhiteSpace(task.Description) ? "<none>" : task.Description;
+            var created = task.CreatedAt.ToString("yyyy-MM-dd");
             var completed = task.CompletedAt.HasValue ? $" | Completed: {task.CompletedAt.Value:yyyy-MM-dd}" : string.Empty;
 
             return $"[{index}] {task.Title} | Category: {task.Category} | Priority: {task.Priority} | Status: {task.Status} | Due: {due} | Created: {created}{completed} | Desc: {desc}";
@@ -546,8 +574,7 @@ namespace ConsoleApp
         /**
          * Prompts the user to select a task index after showing the current list.
          *
-         * Returns:
-         *   The selected index, or -1 if the selection was invalid.
+         * @return The selected index, or -1 if the selection was invalid.
          */
         private static int PromptForTaskIndex()
         {
@@ -565,8 +592,7 @@ namespace ConsoleApp
          * Prints a formatted sub-menu header to the console.
          *
          * @param title The text to display as the sub-menu header.
-         *
-         * @returns void
+         * @return void
          */
         private static void PrintSubMenuHeader(string title)
         {
@@ -581,11 +607,8 @@ namespace ConsoleApp
         /**
          * Prompts until the user supplies a non-empty string.
          *
-         * Parameters:
-         *   prompt - Prompt text presented to the user.
-         *
-         * Returns:
-         *   Trimmed, non-empty user input.
+         * @param prompt Prompt text presented to the user.
+         * @return Trimmed, non-empty user input.
          */
         private static string PromptRequiredString(string prompt)
         {
@@ -601,11 +624,8 @@ namespace ConsoleApp
         /**
          * Reads a single-line optional string. Returns null if the input stream returned null.
          *
-         * Parameters:
-         *   prompt - Prompt text presented to the user.
-         *
-         * Returns:
-         *   The raw user input (may be empty) or null if Console.ReadLine() returned null.
+         * @param prompt Prompt text presented to the user.
+         * @return The raw user input (may be empty) or null if Console.ReadLine() returned null.
          */
         private static string? PromptOptionalString(string prompt)
         {
@@ -619,11 +639,9 @@ namespace ConsoleApp
         /**
          * Prompts for an optional date. Accepts yyyy-MM-dd or other recognizable date formats.
          *
-         * Parameters:
-         *   prompt - Prompt text presented to the user.
+         * @param prompt The prompt text presented to the user.
          *
-         * Returns:
-         *   Parsed DateTime.Date or null if no valid value was provided.
+         * @return Parsed DateTime.Date or null if no valid value was provided.
          */
         private static DateTime? PromptOptionalDate(string prompt)
         {
@@ -644,11 +662,8 @@ namespace ConsoleApp
         /**
          * Prompts repeatedly until a valid date is provided.
          *
-         * Parameters:
-         *   prompt - Prompt text presented to the user.
-         *
-         * Returns:
-         *   Parsed DateTime.Date value.
+         * @param prompt Prompt text presented to the user.
+         * @return Parsed DateTime.Date value.
          */
         private static DateTime PromptRequiredDate(string prompt)
         {
@@ -667,12 +682,10 @@ namespace ConsoleApp
         /**
          * Prompts for an enum value and returns the parsed value or the provided default.
          *
-         * Parameters:
-         *   prompt       - Prompt text presented to the user.
-         *   defaultValue - Value returned when the user provides no input or parsing fails.
+         * @param prompt       Prompt text presented to the user.
+         * @param defaultValue Value returned when the user provides no input or parsing fails.
          *
-         * Returns:
-         *   Parsed enum value or defaultValue.
+         * @return Parsed enum value or defaultValue.
          */
         private static T PromptEnum<T>(string prompt, T defaultValue) where T : struct, Enum
         {
@@ -688,11 +701,8 @@ namespace ConsoleApp
         /**
          * Simple yes/no helper. Returns true if the user enters a value starting with 'y' or 'Y'.
          *
-         * Parameters:
-         *   prompt - Prompt text presented to the user.
-         *
-         * Returns:
-         *   True for yes, false otherwise.
+         * @param prompt Prompt text presented to the user.
+         * @return True for yes, false otherwise.
          */
         private static bool AskYesNo(string prompt)
         {
@@ -705,8 +715,7 @@ namespace ConsoleApp
         /**
          * Ensures there is at least one task in the list and prints a message if none exist.
          *
-         * Returns:
-         *   True if tasks exist; otherwise false.
+         * @return True if tasks exist; otherwise false.
          */
         private static bool EnsureTasksExist()
         {
