@@ -90,7 +90,7 @@ namespace ConsoleApp.Models
          *
          * @return creation timestamp.
          */
-        public DateTime CreatedAt { get; }
+        public DateTime CreatedAt { get; private set; }
 
         /**
          * Timestamp when the task was completed (set when MarkCompleted is called).
@@ -119,7 +119,9 @@ namespace ConsoleApp.Models
             PriorityLevel priority,
             TaskStatus status,
             string? description = null,
-            DateTime? dueDate = null
+            DateTime? dueDate = null,
+            DateTime? createdAt = null,
+            DateTime? completedAt = null
         )
         {
             // Title setter validates for null/whitespace.
@@ -143,14 +145,14 @@ namespace ConsoleApp.Models
             }
 
             Description = description;
-            DueDate = dueDate;
-            Category = category;
-            Priority = priority;
-            Status = status;
+            DueDate     = dueDate;
+            Category    = category;
+            Priority    = priority;
+            Status      = status;
 
             // Track creation and completion time.
-            CreatedAt = DateTime.Now;
-            CompletedAt = status == TaskStatus.Completed ? DateTime.Now : null;
+            CreatedAt   = createdAt ?? DateTime.Now;
+            CompletedAt = completedAt ?? (status == TaskStatus.Completed ? DateTime.Now : null);
         }
 
         /**

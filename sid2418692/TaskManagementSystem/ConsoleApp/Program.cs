@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using ConsoleApp.Models;
 using TaskStatus = ConsoleApp.Models.TaskStatus;
@@ -59,12 +60,15 @@ namespace ConsoleApp
                     case "6": SearchTasks(); break;
                     case "7": ViewTasksDueRange(); break;
                     case "8": ShowDayWeekView(); break;
+                    case "9": SaveTasksInteractive(); break;
+                    case "10": LoadTasksInteractive(); break;
                     case "0": return;
                     default:
                         Console.WriteLine("Invalid choice. Try again.");
                         break;
                 }
 
+                Console.WriteLine("------------");
                 Console.WriteLine();
             }
         }
@@ -86,6 +90,8 @@ namespace ConsoleApp
             Console.WriteLine("6) Search tasks by keyword");
             Console.WriteLine("7) View tasks due within date range");
             Console.WriteLine("8) Day / Week view (grouped by date)");
+            Console.WriteLine("9) Save tasks to file");
+            Console.WriteLine("10) Load tasks from file");
             Console.WriteLine("0) Exit");
         }
 
@@ -422,7 +428,10 @@ namespace ConsoleApp
 
             for (var i = 0; i < list.Count; i++)
             {
-                Console.WriteLine(FormatTaskDisplay(list[i], i));
+                {
+                    // Show index corresponding to the master Tasks list to keep indexes consistent across views.
+                    Console.WriteLine(FormatTaskDisplay(list[i], Tasks.IndexOf(list[i])));
+                }
             }
             Console.WriteLine();
         }
@@ -543,7 +552,7 @@ namespace ConsoleApp
 
             Console.WriteLine();
             Console.WriteLine("!!! ALERT: Tasks due within next 24 hours or overdue !!!");
-            Console.WriteLine("----------");
+            Console.WriteLine("------------");
             foreach (var t in dueSoon)
             {
                 var due = t.DueDate.HasValue ? t.DueDate.Value.ToString("yyyy-MM-dd HH:mm") : "none";
@@ -600,6 +609,337 @@ namespace ConsoleApp
             Console.WriteLine("------------");
             Console.WriteLine(title);
             Console.WriteLine("------------");
+        }
+
+        /**
+         * Prompts the user to save current tasks interactively to a CSV file.
+         * 
+         * Behaviour:
+         * - If no tasks exist, informs the user and returns immediately.
+         * - Prompts for a target file path.
+         * - If the file already exists, confirms whether to overwrite it.
+         * - Attempts to save the tasks to the specified CSV file.
+         * - Handles I/O and permission exceptions gracefully.
+         *
+         * @return void
+         */
+        private static void SaveTasksInteractive()
+        {
+            if (!EnsureTasksExist())
+            {
+                Console.WriteLine("No tasks to save.");
+                return;
+            }
+
+            var path = PromptRequiredString("Enter file path to save tasks (e.g. tasks.csv): ").Trim();
+
+            if (File.Exists(path))
+            {
+                Console.WriteLine($"File '{path}' already exists.");
+                if (!AskYesNo("Overwrite existing file? (y/N): "))
+                {
+                    Console.WriteLine("Save cancelled.");
+                    return;
+                }
+            }
+
+            try
+            {
+                SaveTasksToCsv(path);
+                Console.WriteLine($"Tasks saved to '{path}'.");
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Console.WriteLine($"Failed to save file: {ex.Message}");
+            }
+        }
+
+        /**
+         * Prompts the user to load tasks interactively from a CSV file.
+         * 
+         * Behaviour:
+         * - Requests the file path to load from.
+         * - Validates that the file exists.
+         * - Reads and parses the file using {@link LoadTasksFromCsv(string, out int)}.
+         * - Displays how many tasks were loaded and how many lines were skipped.
+         * - Allows the user to choose between replacing or appending the current task list.
+         * - Handles format, I/O, and permission errors gracefully.
+         *
+         * @return void
+        */
+        private static void LoadTasksInteractive()
+        {
+            var path = PromptRequiredString("Enter file path to load tasks from (e.g. tasks.csv): ").Trim();
+
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("File not found.");
+                return;
+            }
+
+            try
+            {
+                var loaded = LoadTasksFromCsv(path, out var skipped);
+                if (loaded.Count == 0)
+                {
+                    Console.WriteLine("No valid tasks were read from the file.");
+                    return;
+                }
+
+                Console.WriteLine($"Read {loaded.Count} tasks from file. {skipped} invalid line(s) were skipped.");
+                Console.WriteLine("1) Replace current tasks");
+                Console.WriteLine("2) Append to current tasks");
+                Console.WriteLine();
+                Console.Write("Choice: ");
+                var choice = Console.ReadLine()?.Trim();
+
+                if (choice == "1")
+                {
+                    Tasks.Clear();
+                    Tasks.AddRange(loaded);
+                    Console.WriteLine("Current tasks replaced with file contents.");
+                }
+                else
+                {
+                    Tasks.AddRange(loaded);
+                    Console.WriteLine("Loaded tasks appended to current list.");
+                }
+            }
+            catch (FormatException fex)
+            {
+                Console.WriteLine($"File format error: {fex.Message}");
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Console.WriteLine($"Failed to load file: {ex.Message}");
+            }
+        }
+
+        /**
+         * Writes all current tasks to a CSV file.
+         * 
+         * @param path The full file path where the CSV file should be written.
+         * @return void
+         */
+        private static void SaveTasksToCsv(string path)
+        {
+            var dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            using var sw = new StreamWriter(path, false);
+            // Header
+            sw.WriteLine("Title,Category,Priority,Status,Description,DueDate,CreatedAt,CompletedAt");
+            foreach (var t in Tasks)
+            {
+                var title       = CsvEscape(t.Title);
+                var category    = CsvEscape(t.Category);
+                var priority    = CsvEscape(t.Priority.ToString());
+                var status      = CsvEscape(t.Status.ToString());
+                var desc        = CsvEscape(t.Description ?? string.Empty);
+                var due         = t.DueDate.HasValue ? CsvEscape(t.DueDate.Value.ToString("yyyy-MM-dd")) : CsvEscape(string.Empty);
+                var createdAt   = CsvEscape(t.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
+                var completedAt = t.CompletedAt.HasValue ? CsvEscape(t.CompletedAt.Value.ToString("yyyy-MM-dd HH:mm:ss")) : CsvEscape(string.Empty);
+
+                sw.WriteLine(string.Join(",", new[] { title, category, priority, status, desc, due, createdAt, completedAt }));
+            }
+        }
+
+        /**
+         * Reads task records from a CSV file and constructs a list of TaskDetails objects.
+         * 
+         * @param path    The full file path to read from.
+         * @param skipped The output variable to store the count of skipped (invalid) lines.
+         * 
+         * @return A list of successfully parsed TaskDetails objects.
+         * 
+         * @throws IOException     If the file cannot be read.
+         * @throws FormatException If the data format is invalid.
+         */
+        private static List<TaskDetails> LoadTasksFromCsv(string path, out int skipped)
+        {
+            var result = new List<TaskDetails>();
+            skipped = 0;
+
+            using var sr = new StreamReader(path);
+            string? line;
+            var isFirst = true;
+            var lineNo = 0;
+            while ((line = sr.ReadLine()) != null)
+            {
+                lineNo++;
+                if (isFirst)
+                {
+                    // If there's a header, skip it (basic heuristic)
+                    if (line.TrimStart().StartsWith("Title", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isFirst = false;
+                        continue;
+                    }
+                    isFirst = false;
+                }
+
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                string[] fields;
+                try
+                {
+                    fields = ParseCsvLine(line);
+                }
+                catch (FormatException ex)
+                {
+                    // Propagate a clearer message including the line number.
+                    throw new FormatException($"Malformed CSV at line {lineNo}: {ex.Message}");
+                }
+
+                // Expect 8 columns: Title,Category,Priority,Status,Description,DueDate,CreatedAt,CompletedAt
+                if (fields.Length < 8)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var title = fields[0].Trim();
+                var category = fields[1].Trim();
+                var priorityText = fields[2].Trim();
+                var statusText = fields[3].Trim();
+                var description = string.IsNullOrWhiteSpace(fields[4]) ? null : fields[4];
+                var dueText = fields[5].Trim();
+                var createdAtText = fields[6].Trim();
+                var completedAtText = fields[7].Trim();
+
+                if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(category))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                if (!Enum.TryParse<PriorityLevel>(priorityText, true, out var priority))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                if (!Enum.TryParse<TaskStatus>(statusText, true, out var status))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                DateTime? dueDate = null;
+                if (!string.IsNullOrWhiteSpace(dueText))
+                {
+                    if (DateTime.TryParseExact(dueText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                        dueDate = dt.Date;
+                    else if (DateTime.TryParse(dueText, out dt))
+                        dueDate = dt.Date;
+                    else
+                    {
+                        skipped++;
+                        continue;
+                    }
+                }
+
+                // Parse CreatedAt (required) and CompletedAt (optional)
+                if (!DateTime.TryParseExact(createdAtText, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var createdAt))
+                {
+                    // fallback to general parse
+                    if (!DateTime.TryParse(createdAtText, out createdAt))
+                    {
+                        skipped++;
+                        continue;
+                    }
+                }
+
+                DateTime? completedAt = null;
+                if (!string.IsNullOrWhiteSpace(completedAtText))
+                {
+                    if (DateTime.TryParseExact(completedAtText, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var comp))
+                        completedAt = comp;
+                    else if (DateTime.TryParse(completedAtText, out comp))
+                        completedAt = comp;
+                    else
+                    {
+                        skipped++;
+                        continue;
+                    }
+                }
+
+                try
+                {
+                    // Use new constructor that restores CreatedAt and CompletedAt.
+                    var task = new TaskDetails(title, category, priority, status, description, dueDate, createdAt, completedAt);
+                    result.Add(task);
+                }
+                catch
+                {
+                    skipped++;
+                }
+            }
+
+            return result;
+        }
+
+        /**
+         * Escapes a single string for safe use in a CSV file.
+         * 
+         * @param value The text value to escape.
+         * @return A CSV-compliant quoted string.
+         */
+        private static string CsvEscape(string value)
+        {
+            if (value == null) return "\"\"";
+            var escaped = value.Replace("\"", "\"\"");
+            return $"\"{escaped}\"";
+        }
+
+        /**
+         * Parses a single CSV line into individual fields.
+         * 
+         * @param line The raw CSV line to parse.
+         * @return An array of string fields extracted from the line.
+         * @throws FormatException if quotes are unmatched.
+         */
+        private static string[] ParseCsvLine(string line)
+        {
+            var fields = new List<string>();
+            var cur = new System.Text.StringBuilder();
+            var inQuotes = false;
+
+            for (int i = 0; i < line.Length; i++)
+            {
+                var c = line[i];
+                if (c == '"')
+                {
+                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        // Escaped quote.
+                        cur.Append('"');
+                        i++; // Skip next quote.
+                    }
+                    else
+                    {
+                        inQuotes = !inQuotes;
+                    }
+                }
+                else if (c == ',' && !inQuotes)
+                {
+                    fields.Add(cur.ToString());
+                    cur.Clear();
+                }
+                else
+                {
+                    cur.Append(c);
+                }
+            }
+
+            // If quotes were not closed, treat as malformed.
+            if (inQuotes)
+                throw new FormatException("Unmatched quote in CSV line.");
+
+            fields.Add(cur.ToString());
+            return fields.ToArray();
         }
 
         #region Input helpers
