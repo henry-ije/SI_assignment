@@ -1,3 +1,8 @@
+/**
+ * Author: Henry Ije
+ * Project: Personal Task & Schedule Management System
+ */
+
 using System;
 
 namespace ConsoleApp.Models
