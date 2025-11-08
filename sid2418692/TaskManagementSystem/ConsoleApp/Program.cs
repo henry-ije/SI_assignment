@@ -10,6 +10,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using ConsoleApp.Models;
+using ConsoleApp.Storage;
 using TaskStatus = ConsoleApp.Models.TaskStatus;
 
 namespace ConsoleApp
@@ -30,6 +31,12 @@ namespace ConsoleApp
          * @return List of TaskDetails stored in memory.
          */
         private static readonly List<TaskDetails> Tasks = new();
+
+        /**
+         * Repository responsible for task data persistence.
+         */
+        private static readonly ITaskRepository Repository = new CsvTaskRepository();
+
 
         /**
          * Entry point. Runs the main interactive loop until the user exits.
@@ -106,18 +113,29 @@ namespace ConsoleApp
         {
             PrintSubMenuHeader("Add New Task");
 
-            var title       = PromptRequiredString("Title: ");
+            var title = PromptRequiredString("Title: ");
             var description = PromptOptionalString("Description (optional): ");
-            var category    = PromptRequiredString("Category: ");
-            var dueDate     = PromptOptionalDate("Due date (yyyy-MM-dd) (optional): ");
-            var priority    = PromptEnum<PriorityLevel>("Priority (Low, Medium, High) [Defaults to Medium]: ", PriorityLevel.Medium);
-            var status      = PromptEnum<TaskStatus>("Status (NotStarted, InProgress, Completed) [Defaults to NotStarted]: ", TaskStatus.NotStarted);
+            var category = PromptRequiredString("Category: ");
+            var dueDate = PromptOptionalDate("Due date (yyyy-MM-dd) (optional): ");
+            var priority = PromptEnum<PriorityLevel>("Priority (Low, Medium, High) [Defaults to Medium]: ", PriorityLevel.Medium);
+            var status = PromptEnum<TaskStatus>("Status (NotStarted, InProgress, Completed) [Defaults to NotStarted]: ", TaskStatus.NotStarted);
 
-            var task = new TaskDetails(title, category, priority, status, description, dueDate);
-            Tasks.Add(task);
+            try
+            {
+                var task = new TaskDetails(title, category, priority, status, description, dueDate);
+                Tasks.Add(task);
 
-            Console.WriteLine("Task added:");
-            Console.WriteLine(FormatTaskDisplay(task, Tasks.IndexOf(task)));
+                Console.WriteLine("Task added:");
+                Console.WriteLine(FormatTaskDisplay(task, Tasks.IndexOf(task)));
+            }
+            catch (ArgumentException aex)
+            {
+                Console.WriteLine($"Invalid task data: {aex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to add task: {ex.Message}");
+            }
         }
 
         /**
@@ -138,38 +156,46 @@ namespace ConsoleApp
             var index = PromptForTaskIndex();
             if (index < 0) return;
 
-            var task = Tasks[index];
-            Console.WriteLine("Current:");
-            Console.WriteLine(FormatTaskDisplay(task, index));
-
-            // Edit fields. Empty input keeps existing.
-            var newTitle = PromptOptionalString($"Title [{task.Title}]: ");
-            if (!string.IsNullOrWhiteSpace(newTitle)) task.Title = newTitle;
-
-            var newDescription = PromptOptionalString($"Description [{task.Description ?? "<none>"}]: ");
-            if (newDescription is not null) task.Description = string.IsNullOrWhiteSpace(newDescription) ? null : newDescription;
-
-            var newCategory = PromptOptionalString($"Category [{task.Category}]: ");
-            if (!string.IsNullOrWhiteSpace(newCategory)) task = ReplaceCategory(task, newCategory, index);
-
-            var newDue = PromptOptionalDate($"Due date (yyyy-MM-dd) [{(task.DueDate.HasValue ? task.DueDate.Value.ToString("yyyy-MM-dd") : "none")}]: ");
-            // DueDate is nullable so allow clearing via explicit input.
-            if (newDue.HasValue || AskYesNo("Clear due date? (y/N): ")) task = ReplaceDueDate(task, newDue, index);
-
-            var newPriorityInput = PromptOptionalString($"Priority [{task.Priority}] (Low, Medium, High): ");
-            if (!string.IsNullOrWhiteSpace(newPriorityInput) && Enum.TryParse<PriorityLevel>(newPriorityInput, true, out var parsedPriority))
+            try
             {
-                task.UpdatePriority(parsedPriority);
-            }
+                var task = Tasks[index];
+                Console.WriteLine("Current:");
+                Console.WriteLine(FormatTaskDisplay(task, index));
 
-            var newStatusInput = PromptOptionalString($"Status [{task.Status}] (NotStarted, InProgress, Completed): ");
-            if (!string.IsNullOrWhiteSpace(newStatusInput) && Enum.TryParse<TaskStatus>(newStatusInput, true, out var parsedStatus))
+                // Edit fields. Empty input keeps existing.
+                var newTitle = PromptOptionalString($"Title [{task.Title}]: ");
+                if (!string.IsNullOrWhiteSpace(newTitle)) task.Title = newTitle;
+
+                var newDescription = PromptOptionalString($"Description [{task.Description ?? "<none>"}]: ");
+                if (newDescription is not null) task.Description = string.IsNullOrWhiteSpace(newDescription) ? null : newDescription;
+
+                var newCategory = PromptOptionalString($"Category [{task.Category}]: ");
+                if (!string.IsNullOrWhiteSpace(newCategory)) task = ReplaceCategory(task, newCategory, index);
+
+                var newDue = PromptOptionalDate($"Due date (yyyy-MM-dd) [{(task.DueDate.HasValue ? task.DueDate.Value.ToString("yyyy-MM-dd") : "none")}]: ");
+                // DueDate is nullable so allow clearing via explicit input.
+                if (newDue.HasValue || AskYesNo("Clear due date? (y/N): ")) task = ReplaceDueDate(task, newDue, index);
+
+                var newPriorityInput = PromptOptionalString($"Priority [{task.Priority}] (Low, Medium, High): ");
+                if (!string.IsNullOrWhiteSpace(newPriorityInput) && Enum.TryParse<PriorityLevel>(newPriorityInput, true, out var parsedPriority))
+                {
+                    task.UpdatePriority(parsedPriority);
+                }
+
+                var newStatusInput = PromptOptionalString($"Status [{task.Status}] (NotStarted, InProgress, Completed): ");
+                if (!string.IsNullOrWhiteSpace(newStatusInput) && Enum.TryParse<TaskStatus>(newStatusInput, true, out var parsedStatus))
+                {
+                    task.UpdateStatus(parsedStatus);
+                }
+
+                Console.WriteLine("Task updated:");
+                Console.WriteLine(FormatTaskDisplay(task, index));
+            }
+            catch (Exception ex)
             {
-                task.UpdateStatus(parsedStatus);
+                Console.WriteLine($"Failed to replace category: {ex.Message}. Change aborted.");
+                return;
             }
-
-            Console.WriteLine("Task updated:");
-            Console.WriteLine(FormatTaskDisplay(task, index));
         }
 
         /**
@@ -186,15 +212,28 @@ namespace ConsoleApp
          */
         private static TaskDetails ReplaceCategory(TaskDetails original, string newCategory, int index)
         {
-            var rebuilt = new TaskDetails(
-                title: original.Title,
-                category: newCategory,
-                priority: original.Priority,
-                status: original.Status,
-                description: original.Description,
-                dueDate: original.DueDate);
-            Tasks[index] = rebuilt;
-            return rebuilt;
+            try
+            {
+                var rebuilt = new TaskDetails(
+                    title: original.Title,
+                    category: newCategory,
+                    priority: original.Priority,
+                    status: original.Status,
+                    description: original.Description,
+                    dueDate: original.DueDate);
+                Tasks[index] = rebuilt;
+                return rebuilt;
+            }
+            catch (ArgumentException aex)
+            {
+                Console.WriteLine($"Invalid category: {aex.Message}. Category not changed.");
+                return original;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to replace category: {ex.Message}. Change aborted.");
+                return original;
+            }
         }
 
         /**
@@ -211,15 +250,28 @@ namespace ConsoleApp
          */
         private static TaskDetails ReplaceDueDate(TaskDetails original, DateTime? newDue, int index)
         {
-            var rebuilt = new TaskDetails(
-                title: original.Title,
-                category: original.Category,
-                priority: original.Priority,
-                status: original.Status,
-                description: original.Description,
-                dueDate: newDue);
-            Tasks[index] = rebuilt;
-            return rebuilt;
+            try
+            {
+                var rebuilt = new TaskDetails(
+                    title: original.Title,
+                    category: original.Category,
+                    priority: original.Priority,
+                    status: original.Status,
+                    description: original.Description,
+                    dueDate: newDue);
+                Tasks[index] = rebuilt;
+                return rebuilt;
+            }
+            catch (ArgumentException aex)
+            {
+                Console.WriteLine($"Invalid data: {aex.Message}. Due date not changed.");
+                return original;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to replace due date: {ex.Message}. Change aborted.");
+                return original;
+            }
         }
 
         /**
@@ -613,7 +665,7 @@ namespace ConsoleApp
 
         /**
          * Prompts the user to save current tasks interactively to a CSV file.
-         * 
+         *
          * Behaviour:
          * - If no tasks exist, informs the user and returns immediately.
          * - Prompts for a target file path.
@@ -680,7 +732,7 @@ namespace ConsoleApp
 
             try
             {
-                SaveTasksToCsv(path);
+                Repository.Save(Tasks, path);
                 Console.WriteLine($"Tasks saved to '{path}'.");
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
@@ -691,7 +743,7 @@ namespace ConsoleApp
 
         /**
          * Prompts the user to load tasks interactively from a CSV file.
-         * 
+         *
          * Behaviour:
          * - Requests the file path to load from.
          * - Validates that the file exists.
@@ -714,7 +766,7 @@ namespace ConsoleApp
 
             try
             {
-                var loaded = LoadTasksFromCsv(path, out var skipped);
+                var loaded = Repository.Load(path, out var skipped);
                 if (loaded.Count == 0)
                 {
                     Console.WriteLine("No valid tasks were read from the file.");
@@ -764,174 +816,8 @@ namespace ConsoleApp
         }
 
         /**
-         * Writes all current tasks to a CSV file.
-         * 
-         * @param path The full file path where the CSV file should be written.
-         * @return void
-         */
-        private static void SaveTasksToCsv(string path)
-        {
-            var dir = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
-
-            using var sw = new StreamWriter(path, false);
-            // Header
-            sw.WriteLine("Title,Category,Priority,Status,Description,DueDate,CreatedAt,CompletedAt");
-            foreach (var t in Tasks)
-            {
-                var title       = CsvEscape(t.Title);
-                var category    = CsvEscape(t.Category);
-                var priority    = CsvEscape(t.Priority.ToString());
-                var status      = CsvEscape(t.Status.ToString());
-                var desc        = CsvEscape(t.Description ?? string.Empty);
-                var due         = t.DueDate.HasValue ? CsvEscape(t.DueDate.Value.ToString("yyyy-MM-dd")) : CsvEscape(string.Empty);
-                var createdAt   = CsvEscape(t.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"));
-                var completedAt = t.CompletedAt.HasValue ? CsvEscape(t.CompletedAt.Value.ToString("yyyy-MM-dd HH:mm:ss")) : CsvEscape(string.Empty);
-
-                sw.WriteLine(string.Join(",", new[] { title, category, priority, status, desc, due, createdAt, completedAt }));
-            }
-        }
-
-        /**
-         * Reads task records from a CSV file and constructs a list of TaskDetails objects.
-         * 
-         * @param path    The full file path to read from.
-         * @param skipped The output variable to store the count of skipped (invalid) lines.
-         * 
-         * @return A list of successfully parsed TaskDetails objects.
-         * 
-         * @throws IOException     If the file cannot be read.
-         * @throws FormatException If the data format is invalid.
-         */
-        private static List<TaskDetails> LoadTasksFromCsv(string path, out int skipped)
-        {
-            var result = new List<TaskDetails>();
-            skipped = 0;
-
-            using var sr = new StreamReader(path);
-            string? line;
-            var isFirst = true;
-            var lineNo = 0;
-            while ((line = sr.ReadLine()) != null)
-            {
-                lineNo++;
-                if (isFirst)
-                {
-                    // If there's a header, skip it (basic heuristic)
-                    if (line.TrimStart().StartsWith("Title", StringComparison.OrdinalIgnoreCase))
-                    {
-                        isFirst = false;
-                        continue;
-                    }
-                    isFirst = false;
-                }
-
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                string[] fields;
-                try
-                {
-                    fields = ParseCsvLine(line);
-                }
-                catch (FormatException ex)
-                {
-                    // Propagate a clearer message including the line number.
-                    throw new FormatException($"Malformed CSV at line {lineNo}: {ex.Message}");
-                }
-
-                // Expect 8 columns: Title,Category,Priority,Status,Description,DueDate,CreatedAt,CompletedAt
-                if (fields.Length < 8)
-                {
-                    skipped++;
-                    continue;
-                }
-
-                var title = fields[0].Trim();
-                var category = fields[1].Trim();
-                var priorityText = fields[2].Trim();
-                var statusText = fields[3].Trim();
-                var description = string.IsNullOrWhiteSpace(fields[4]) ? null : fields[4];
-                var dueText = fields[5].Trim();
-                var createdAtText = fields[6].Trim();
-                var completedAtText = fields[7].Trim();
-
-                if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(category))
-                {
-                    skipped++;
-                    continue;
-                }
-
-                if (!Enum.TryParse<PriorityLevel>(priorityText, true, out var priority))
-                {
-                    skipped++;
-                    continue;
-                }
-
-                if (!Enum.TryParse<TaskStatus>(statusText, true, out var status))
-                {
-                    skipped++;
-                    continue;
-                }
-
-                DateTime? dueDate = null;
-                if (!string.IsNullOrWhiteSpace(dueText))
-                {
-                    if (DateTime.TryParseExact(dueText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
-                        dueDate = dt.Date;
-                    else if (DateTime.TryParse(dueText, out dt))
-                        dueDate = dt.Date;
-                    else
-                    {
-                        skipped++;
-                        continue;
-                    }
-                }
-
-                // Parse CreatedAt (required) and CompletedAt (optional)
-                if (!DateTime.TryParseExact(createdAtText, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var createdAt))
-                {
-                    // fallback to general parse
-                    if (!DateTime.TryParse(createdAtText, out createdAt))
-                    {
-                        skipped++;
-                        continue;
-                    }
-                }
-
-                DateTime? completedAt = null;
-                if (!string.IsNullOrWhiteSpace(completedAtText))
-                {
-                    if (DateTime.TryParseExact(completedAtText, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var comp))
-                        completedAt = comp;
-                    else if (DateTime.TryParse(completedAtText, out comp))
-                        completedAt = comp;
-                    else
-                    {
-                        skipped++;
-                        continue;
-                    }
-                }
-
-                try
-                {
-                    // Use new constructor that restores CreatedAt and CompletedAt.
-                    var task = new TaskDetails(title, category, priority, status, description, dueDate, createdAt, completedAt);
-                    result.Add(task);
-                }
-                catch
-                {
-                    skipped++;
-                }
-            }
-
-            return result;
-        }
-
-        /**
          * Creates a timestamped backup of the current tasks in the same directory as the target file.
-         * 
+         *
          * @param path The base file path used to derive the backup file name.
          * @return true if backup was created successfully, false otherwise.
          */
@@ -939,8 +825,21 @@ namespace ConsoleApp
         {
             try
             {
-                var backupPath = Path.ChangeExtension(path, null) + $".backup.{DateTime.Now:yyyyMMddHHmmss}" + Path.GetExtension(path);
-                SaveTasksToCsv(backupPath);
+                // Determine directory to place backup (fallback to current dir)
+                var dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrWhiteSpace(dir))
+                    dir = Directory.GetCurrentDirectory();
+
+                // Preserve original extension if present, otherwise use .csv
+                var ext = Path.GetExtension(path);
+                if (string.IsNullOrEmpty(ext))
+                    ext = ".csv";
+
+                // Build canonical backup name: tasks-list-backup.<timestamp>.<ext>
+                var backupFileName = $"tasks-list-backup.{DateTime.Now:yyyyMMddHHmmss}{ext}";
+                var backupPath = Path.Combine(dir, backupFileName);
+
+                Repository.Save(Tasks, backupPath);
                 Console.WriteLine($"Backup of current tasks created at '{backupPath}'.");
                 return true;
             }
@@ -953,7 +852,7 @@ namespace ConsoleApp
 
         /**
          * Replaces the current in-memory task list with the given tasks and displays a confirmation message.
-         * 
+         *
          * @param newTasks The new list of tasks to set.
          * @param message A confirmation message to display after replacement.
          * @return void
@@ -963,67 +862,6 @@ namespace ConsoleApp
             Tasks.Clear();
             Tasks.AddRange(newTasks);
             Console.WriteLine(message);
-        }
-
-        /**
-         * Escapes a single string for safe use in a CSV file.
-         * 
-         * @param value The text value to escape.
-         * @return A CSV-compliant quoted string.
-         */
-        private static string CsvEscape(string value)
-        {
-            if (value == null) return "\"\"";
-            var escaped = value.Replace("\"", "\"\"");
-            return $"\"{escaped}\"";
-        }
-
-        /**
-         * Parses a single CSV line into individual fields.
-         * 
-         * @param line The raw CSV line to parse.
-         * @return An array of string fields extracted from the line.
-         * @throws FormatException if quotes are unmatched.
-         */
-        private static string[] ParseCsvLine(string line)
-        {
-            var fields = new List<string>();
-            var cur = new System.Text.StringBuilder();
-            var inQuotes = false;
-
-            for (int i = 0; i < line.Length; i++)
-            {
-                var c = line[i];
-                if (c == '"')
-                {
-                    if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
-                    {
-                        // Escaped quote.
-                        cur.Append('"');
-                        i++; // Skip next quote.
-                    }
-                    else
-                    {
-                        inQuotes = !inQuotes;
-                    }
-                }
-                else if (c == ',' && !inQuotes)
-                {
-                    fields.Add(cur.ToString());
-                    cur.Clear();
-                }
-                else
-                {
-                    cur.Append(c);
-                }
-            }
-
-            // If quotes were not closed, treat as malformed.
-            if (inQuotes)
-                throw new FormatException("Unmatched quote in CSV line.");
-
-            fields.Add(cur.ToString());
-            return fields.ToArray();
         }
 
         #region Input helpers
