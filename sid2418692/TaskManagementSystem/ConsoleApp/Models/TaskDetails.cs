@@ -41,8 +41,8 @@ namespace ConsoleApp.Models
         public string Title
         {
             get => title;
-            set => title = !string.IsNullOrWhiteSpace(value) 
-                    ? value 
+            set => title = !string.IsNullOrWhiteSpace(value)
+                    ? value
                     : throw new ArgumentException("Title cannot be empty.", nameof(Title));
         }
 
@@ -72,8 +72,19 @@ namespace ConsoleApp.Models
         public TaskStatus Status { get; private set; }
 
         /**
+         * Timestamp when the task was created (set automatically).
+         */
+        public DateTime CreatedAt { get; }
+
+        /**
+         * Timestamp when the task was completed (set when MarkCompleted is called).
+         * Null until the task is completed.
+         */
+        public DateTime? CompletedAt { get; private set; }
+
+        /**
          * Creates a new TaskDetails instance.
-         * 
+         *
          * Parameters:
          *   title       - The title of the task. Cannot be null or empty.
          *   category    - The category of the task (e.g., Work, Personal).
@@ -112,10 +123,14 @@ namespace ConsoleApp.Models
             }
 
             Description = description;
-            DueDate     = dueDate;
-            Category    = category;
-            Priority    = priority;
-            Status      = status;
+            DueDate = dueDate;
+            Category = category;
+            Priority = priority;
+            Status = status;
+
+            // Track creation and completion time.
+            CreatedAt = DateTime.Now;
+            CompletedAt = status == TaskStatus.Completed ? DateTime.Now : null;
         }
 
         /**
@@ -127,12 +142,28 @@ namespace ConsoleApp.Models
                 throw new ArgumentOutOfRangeException(nameof(status), "Status must be a defined TaskStatus value.");
 
             Status = status;
+
+            // If status set to completed, stamp completion time.
+            if (Status == TaskStatus.Completed && CompletedAt == null)
+            {
+                CompletedAt = DateTime.Now;
+            }
+
+            // If status moves away from completed, clear completion time.
+            if (Status != TaskStatus.Completed)
+            {
+                CompletedAt = null;
+            }
         }
 
         /**
          * Mark the task as completed.
          */
-        public void MarkCompleted() => Status = TaskStatus.Completed;
+        public void MarkCompleted()
+        {
+            Status = TaskStatus.Completed;
+            CompletedAt = DateTime.Now;
+        }
 
         /**
          * Update the task's priority.
@@ -147,10 +178,12 @@ namespace ConsoleApp.Models
 
         public override string ToString()
         {
-            var due      = DueDate.HasValue ? $" Due: {DueDate:yyyy-MM-dd}" : string.Empty;
+            var due = DueDate.HasValue ? $" Due: {DueDate:yyyy-MM-dd}" : string.Empty;
             var category = string.IsNullOrWhiteSpace(Category) ? string.Empty : $" Category: {Category}";
+            var created = $" Created: {CreatedAt:yyyy-MM-dd HH:mm}";
+            var completed = CompletedAt.HasValue ? $" Completed: {CompletedAt:yyyy-MM-dd HH:mm}" : string.Empty;
 
-            return $"{Title} [{Priority}] - {Status}{due}{category}";
+            return $"{Title} [{Priority}] - {Status}{due}{category}{created}{completed}";
         }
     }
 }
